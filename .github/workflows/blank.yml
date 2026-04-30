@@ -1,0 +1,60 @@
+name: TahseenHost - Windows Server 2025 RDP
+
+on:
+  workflow_dispatch: # Allows manual start
+  schedule:
+    - cron: '0 0 */4 * *' # RESTART SYSTEM: Automatically restarts every 4 days
+
+jobs:
+  tahseen-rdp:
+    runs-on: self-hosted # Runs on your Linux VPS (Google Shell/Datalab)
+    steps:
+      - name: System Preparation
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qemu-kvm tailscale
+          
+      - name: Connect Tailscale
+        run: |
+          # Use your Tailscale Auth Key from GitHub Secrets
+          sudo tailscale up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=TahseenHost --accept-routes
+
+      - name: Setup Persistent Disk
+        run: |
+          # Creates the disk ONLY if it doesn't exist. 
+          # This ensures your data is RESTORED from the VPS storage.
+          if [ ! -f ~/windows_data.qcow2 ]; then
+            echo "Creating new persistent disk..."
+            qemu-img create -f qcow2 ~/windows_data.qcow2 30G
+          else
+            echo "Persistent disk found. Restoring TahseenHost data..."
+          fi
+
+      - name: Launch Windows Server 2025
+        run: |
+          echo "Username: TahseenMahmud"
+          echo "Password: Rishan09032015"
+          
+          # Launching Windows in the background (daemonize)
+          # We use host-passthrough for better speed on VPS
+          sudo qemu-system-x86_64 \
+            -m 4G \
+            -smp 2 \
+            -cpu host \
+            -enable-kvm \
+            -drive file=$HOME/windows_data.qcow2,format=qcow2 \
+            -net nic -net user,hostfwd=tcp::3389-:3389 \
+            -vnc :0 -daemonize
+
+      - name: Heartbeat & Idle Beat
+        run: |
+          echo "TahseenHost RDP is ACTIVE on Tailscale."
+          echo "Connect using the Tailscale IP of 'TahseenHost'"
+          
+          # Loop to keep the action running and beat the idle timer
+          # This will run until the 4-day schedule restarts it
+          while true; do
+            uptime_msg="TahseenHost Status: Running | $(date)"
+            echo $uptime_msg
+            sleep 60
+          done
